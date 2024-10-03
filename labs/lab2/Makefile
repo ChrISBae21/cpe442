@@ -1,17 +1,14 @@
 # Compiler
-CC = gcc
+CC = g++
 
 # Compiler flags
 CFLAGS = -Wall -O2
 
-# Include directories for OpenCV
-INCLUDE_DIRS = `pkg-config --cflags opencv4`
+# OpenCV include and library flags (using pkg-config)
+OPENCV_FLAGS = `pkg-config --cflags --libs opencv4`
 
-# Libraries for OpenCV
-LIBS = `pkg-config --libs opencv4`
-
-# Source files
-SRCS = main.c
+# Source file
+SRC = main.c
 
 # Output binary
 TARGET = main
@@ -19,8 +16,8 @@ TARGET = main
 # Build the application
 all: $(TARGET)
 
-$(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) $(INCLUDE_DIRS) -o $(TARGET) $(SRCS) $(LIBS)
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(OPENCV_FLAGS)
 
 # Clean the build
 clean:
