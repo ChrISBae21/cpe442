@@ -16,14 +16,11 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    cv::Mat resized_image;
-    cv::resize(image, resized_image, cv::Size(500, 500));
-
     // Create a window
-    cv::namedWindow("Image Viewer", cv::WINDOW_AUTOSIZE);
+    // cv::namedWindow("Image Viewer", cv::WINDOW_AUTOSIZE);
 
     // Show the image inside the window
-    cv::imshow("Image Viewer", resized_image);
+    cv::imshow("Image Viewer", image);
 
     // Wait for any keystroke in the window
     cv::waitKey(0);
