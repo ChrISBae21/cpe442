@@ -56,10 +56,7 @@ void to442_grayscale(cv::Mat& rgb, cv::Mat& gray) {
     for(y = 0; y < rgb.rows; y++) {
         for(x = 0; x < rgb.cols; x++) {
             pixels = rgb.at<cv::Vec3b>(y, x);
-            grayvalue = (uint8_t) 
-                        ((pixels[0] * BLUE_WEIGHT) + 
-                        (pixels[1] * GREEN_WEIGHT) + 
-                        (pixels[2] * RED_WEIGHT));
+            grayvalue = (uint8_t) ((pixels[0] * BLUE_WEIGHT) + (pixels[1] * GREEN_WEIGHT) + (pixels[2] * RED_WEIGHT));
             gray.at<uint8_t>(y,x) = grayvalue;
         }
     }
