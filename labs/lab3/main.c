@@ -79,7 +79,7 @@ void to442_sobel(cv::Mat& gray, cv::Mat& sobel) {
         {1, 2, 1}
     };
 
-    sobel.create(gray.size(), CV_8UC1);
+    sobel.create(gray.rows-2, gray.cols-2, CV_8UC1);
 
     for(y = 1; y < gray.rows - 1; y++) {  
         for(x = 1; x < gray.cols - 1; x++) {
@@ -97,7 +97,7 @@ void to442_sobel(cv::Mat& gray, cv::Mat& sobel) {
             if(mag > 255) {
                 mag = 255;
             }
-            sobel.at<uint8_t>(y, x) = (uint8_t)mag;
+            sobel.at<uint8_t>(y-1, x-1) = (uint8_t)mag;
         }
     }
     
