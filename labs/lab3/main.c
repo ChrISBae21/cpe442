@@ -32,9 +32,9 @@ int main(int argc, char** argv) {
         /* convert to grayscale */
         to442_grayscale(frame, gray);
         /* apply the sobel filter */
-
+        to442_sobel(gray, sobel);
         /* show the frame */
-        cv::imshow("Gray", gray);
+        cv::imshow("Sobel", sobel);
 
         /* wait for 'q' to quit */
         if (cv::waitKey(30) == 'q') break;
@@ -50,12 +50,16 @@ void to442_grayscale(cv::Mat& rgb, cv::Mat& gray) {
     int x, y;
     uint8_t grayvalue;
     cv::Vec3b pixels;
+
     gray.create(rgb.size(), CV_8UC1);
 
     for(y = 0; y < rgb.rows; y++) {
         for(x = 0; x < rgb.cols; x++) {
             pixels = rgb.at<cv::Vec3b>(y, x);
-            grayvalue = (uint8_t) (pixels[0] * BLUE_WEIGHT) + (pixels[1] * GREEN_WEIGHT) + (pixels[2] * RED_WEIGHT);
+            grayvalue = (uint8_t) 
+                        ((pixels[0] * BLUE_WEIGHT) + 
+                        (pixels[1] * GREEN_WEIGHT) + 
+                        (pixels[2] * RED_WEIGHT));
             gray.at<uint8_t>(y,x) = grayvalue;
         }
     }
@@ -64,14 +68,40 @@ void to442_grayscale(cv::Mat& rgb, cv::Mat& gray) {
 
 void to442_sobel(cv::Mat& gray, cv::Mat& sobel) {
     int x, y;
-    uint16_t value;
-    sobel.create(gray.size().width - 2, gray.size().height - 2, CV_8UC1);
+    int16_t sumX, sumY;
+    int mag;
 
-    for(y = 2; y < gray.rows - 1; y++) {
-        for(x = 2; x < gray.cols - 1; x++) {
+    int Gx[3][3] = {
+        {-1, 0, 1},
+        {-2, 0, 2},
+        {-1, 0, 1}
+    };
+    int Gy[3][3] = {
+        {-1, -2, -1},
+        {0, 0, 0},
+        {1, 2, 1}
+    };
+
+    sobel.create(gray.size(), CV_8UC1);
+
+    for(y = 1; y < gray.rows - 1; y++) {  
+        for(x = 1; x < gray.cols - 1; x++) {
             
+            sumX =  (gray.at<uint8_t>(y-1, x-1) * Gx[0][0]) + (gray.at<uint8_t>(y-1, x+1) * Gx[0][2]) +
+                    (gray.at<uint8_t>(y, x-1)   * Gx[1][0]) + (gray.at<uint8_t>(y, x+1)   * Gx[1][2]) +
+                    (gray.at<uint8_t>(y+1, x-1) * Gx[2][0]) + (gray.at<uint8_t>(y+1, x+1) * Gx[2][2]);
+            
+            sumY =  (gray.at<uint8_t>(y-1, x-1) * Gy[0][0]) + (gray.at<uint8_t>(y-1, x)   * Gy[0][1]) +
+                    (gray.at<uint8_t>(y-1, x+1) * Gy[0][2]) + (gray.at<uint8_t>(y+1, x-1) * Gy[2][0]) +
+                    (gray.at<uint8_t>(y+1, x)   * Gy[2][1]) + (gray.at<uint8_t>(y+1, x+1) * Gy[2][2]);
+
+            mag = std::abs(sumX) + std::abs(sumY);
+
+            if(mag > 255) {
+                mag = 255;
+            }
+            sobel.at<uint8_t>(y, x) = (uint8_t)mag;
         }
     }
-    
     
 }
