@@ -4,8 +4,8 @@
 #define GREEN_WEIGHT    0.7152
 #define BLUE_WEIGHT     0.0722
 
-void to442_grayscale(cv::Mat& rgb, cv::Mat& gray);
-void to442_sobel(cv::Mat& gray, cv::Mat& sobel);
+cv::Mat to442_grayscale(cv::Mat& rgb);
+cv::Mat to442_sobel(cv::Mat& gray);
 
 int main(int argc, char** argv) {
     
@@ -30,9 +30,9 @@ int main(int argc, char** argv) {
             break;
         }
         /* convert to grayscale */
-        to442_grayscale(frame, gray);
+        gray = to442_grayscale(frame);
         /* apply the sobel filter */
-        to442_sobel(gray, sobel);
+        sobel = to442_sobel(gray);
         /* show the frame */
         cv::imshow("Sobel", sobel);
 
@@ -46,10 +46,11 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void to442_grayscale(cv::Mat& rgb, cv::Mat& gray) {
+cv::Mat to442_grayscale(cv::Mat& rgb) {
     int x, y;
     uint8_t grayvalue;
     cv::Vec3b pixels;
+    cv::Mat gray;
 
     gray.create(rgb.size(), CV_8UC1);
 
@@ -61,12 +62,15 @@ void to442_grayscale(cv::Mat& rgb, cv::Mat& gray) {
         }
     }
 
+    return gray;
+
 }
 
-void to442_sobel(cv::Mat& gray, cv::Mat& sobel) {
+cv::Mat to442_sobel(cv::Mat& gray) {
     int x, y;
     int16_t sumX, sumY;
     int mag;
+    cv::Mat sobel;
 
     int Gx[3][3] = {
         {-1, 0, 1},
@@ -84,10 +88,12 @@ void to442_sobel(cv::Mat& gray, cv::Mat& sobel) {
     for(y = 1; y < gray.rows - 1; y++) {  
         for(x = 1; x < gray.cols - 1; x++) {
             
+            /* convolve on the x */
             sumX =  (gray.at<uint8_t>(y-1, x-1) * Gx[0][0]) + (gray.at<uint8_t>(y-1, x+1) * Gx[0][2]) +
                     (gray.at<uint8_t>(y, x-1)   * Gx[1][0]) + (gray.at<uint8_t>(y, x+1)   * Gx[1][2]) +
                     (gray.at<uint8_t>(y+1, x-1) * Gx[2][0]) + (gray.at<uint8_t>(y+1, x+1) * Gx[2][2]);
             
+            /* convolve on the y */
             sumY =  (gray.at<uint8_t>(y-1, x-1) * Gy[0][0]) + (gray.at<uint8_t>(y-1, x)   * Gy[0][1]) +
                     (gray.at<uint8_t>(y-1, x+1) * Gy[0][2]) + (gray.at<uint8_t>(y+1, x-1) * Gy[2][0]) +
                     (gray.at<uint8_t>(y+1, x)   * Gy[2][1]) + (gray.at<uint8_t>(y+1, x+1) * Gy[2][2]);
@@ -100,5 +106,5 @@ void to442_sobel(cv::Mat& gray, cv::Mat& sobel) {
             sobel.at<uint8_t>(y-1, x-1) = (uint8_t)mag;
         }
     }
-    
+    return sobel;
 }
