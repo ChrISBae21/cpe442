@@ -4,6 +4,8 @@ CC = g++
 # Compiler flags
 CFLAGS = -Wall -O
 
+LFLAGS = -lpthread
+
 # OpenCV include and library flags (using pkg-config)
 OPENCV_FLAGS = `pkg-config --cflags --libs opencv4`
 
@@ -17,7 +19,7 @@ TARGET = main
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(OPENCV_FLAGS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(OPENCV_FLAGS) $(LFLAGS)
 
 # Clean the build
 clean:
