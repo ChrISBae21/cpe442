@@ -2,7 +2,7 @@
 CC = g++
 
 # Compiler flags
-CFLAGS = -Wall -O
+CFLAGS = -O
 
 LFLAGS = -lpthread
 
