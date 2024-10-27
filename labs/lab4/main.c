@@ -48,6 +48,9 @@ void *thread_function(void *arg) {
     while (true) {
         /* Barrier: wait for new frame */
         pthread_barrier_wait(&nextBarrier);
+        if(frame_info.frame.empty()) {
+            break;
+        }
 
         if (frame_info.done) break;
 
@@ -62,6 +65,10 @@ void *thread_function(void *arg) {
 
         /* Wait for all threads to finish Sobel */
         pthread_barrier_wait(&sobelBarrier);
+
+        // if (cv::waitKey(30) == 'q') {
+        //     break;
+        // }
         if (frame_info.done) break;
     }
     pthread_exit(NULL);
@@ -85,8 +92,6 @@ void *main_thread(void *arg) {
             cv::imshow("Sobel", frame_info.sobel);
             if (cv::waitKey(30) == 'q') {
                 frame_info.done = 1;
-                cap->release();
-                cv::destroyAllWindows();
                 break;
             }
         }
@@ -96,7 +101,7 @@ void *main_thread(void *arg) {
 
 void to442_grayscale(int id, int numRows) {
     int start = id * numRows;
-    int end = (id == NUM_THREADS - 1) ? frame_info.frame.rows : start + numRows;
+    int end = (id == NUM_THREADS - 1) ? frame_info.gray.rows : start + numRows;
 
     for (int y = start; y < end; y++) {
         for (int x = 0; x < frame_info.frame.cols; x++) {
@@ -124,7 +129,9 @@ void to442_sobel(int id, int numRows) {
         { 1,  2,  1}
     };
 
-    for (int y = start + 1; y < end - 1; y++) {
+    if(start == 0) start+=2;
+    if(end == numRows) end-=2;
+    for (int y = start-1; y < end+1; y++) {
         for (int x = 1; x < frame_info.gray.cols - 1; x++) {
             int16_t sumX = 0, sumY = 0;
 
@@ -173,6 +180,8 @@ int main(int argc, char** argv) {
     }
 
     pthread_join(mainThread, NULL);
+    cap.release();
+    cv::destroyAllWindows();
     
     for (int i = 0; i < NUM_THREADS; i++) {
         pthread_join(threads[i], NULL);
