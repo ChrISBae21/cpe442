@@ -1,8 +1,9 @@
 # Compiler
-CC = g++
+# CC = g++
+CC = aarch64-linux-gnu-g++
 
 # Compiler flags
-CFLAGS = -O
+CFLAGS = -O0
 
 LFLAGS = -lpthread
 
