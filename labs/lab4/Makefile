@@ -10,10 +10,12 @@ LFLAGS = -lpthread
 OPENCV_FLAGS = `pkg-config --cflags --libs opencv4`
 
 # Source file
-SRC = main.c
+# SRC = main.c
+SRC = lab4.c
 
 # Output binary
-TARGET = main
+# TARGET = main
+TARGET = lab4
 
 # Build the application
 all: $(TARGET)
