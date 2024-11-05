@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     int height = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
 
     frame_info.gray.create(height, width, CV_8UC1);
-    frame_info.sobel.create(height, width, CV_8UC1);
+    frame_info.sobel.create(height-1, width-1, CV_8UC1);
 
     pthread_barrier_init(&barrier, NULL, NUM_THREADS);
 
