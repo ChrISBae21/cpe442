@@ -1,144 +1,211 @@
-#include <opencv2/opencv.hpp>
+#include <stdlib.h>
 #include <stdio.h>
-#include <pthread.h>
+#include <unistd.h> 
+#include <opencv2/opencv.hpp>
 #include <arm_neon.h>
 
-#define RED_WEIGHT      0.2126
-#define GREEN_WEIGHT    0.7152
-#define BLUE_WEIGHT     0.0722
-
+#ifndef NUM_THREADS
 #define NUM_THREADS 4
+#endif
 
-typedef struct frames {
-    cv::Mat frame;
+int exit_flag = 0; 
+
+
+cv::Mat* to442_sobel(cv::Mat* gray, cv::Mat* sobel, int startRow, int height);
+cv::Mat* to442_grayscale(cv::Mat* original, cv::Mat* gray, int startRow, int height);
+void* thread(void*);
+
+typedef struct threadStruct{
+    // cv::Mat* original;
+    // cv::Mat* gray;
+    // cv::Mat* sobel;
+    size_t startRow;
+    size_t width;
+    size_t height;
+    uint8_t firstThread;
+    uint8_t lastThread;
+} threadStruct_t;
+
+
+typedef struct frameStruct {
+    cv::Mat original;
     cv::Mat gray;
     cv::Mat sobel;
 } frame_t;
 
 
-pthread_barrier_t barrier;
-
-frame_t frame_info;
-
-int id[NUM_THREADS];
+/* create threads */
 pthread_t threads[NUM_THREADS];
+/* all the threads for the filter */
+threadStruct_t threadcurrThread[NUM_THREADS];
+/* struct for all the frames */
+frame_t frames;
 
-void create_threads();
-void *thread_function(void *arg);
-void *main_thread(void *arg);
-void to442_grayscale(int id, int numRows);
-void to442_sobel(int id, int numRows);
-void load_and_convert(uint8_t* rows[3], uint8x8_t pixelVect_u8[3][3], int16x8_t pixelVect_s16[3][3], int x);
-uint8x8_t clip_and_convert(int16x8_t mag);
-void apply_filter(int16x8_t* sumX, int16x8_t* sumY, int16x8_t pixelVect_s16[3][3]);
+pthread_barrier_t loadBarrier; 
+pthread_barrier_t grayBarrier;
+pthread_barrier_t sobelBarrier;
 
-void *thread_function(void *arg) {
-    int id = *((int*)arg);
-    int numRows = frame_info.gray.rows / NUM_THREADS;
 
-    /* Grayscale conversion */
-    to442_grayscale(id, numRows);
-    /* Wait for all threads to finish grayscale */
-    pthread_barrier_wait(&barrier);
-    /* Sobel filter application */
-    to442_sobel(id, numRows);
-    /* exit */
-    pthread_exit(NULL);
+void init_barriers() {
+    /* barrier for loading a new original */
+    pthread_barrier_init(&loadBarrier, NULL, NUM_THREADS + 1);
+    /* barrier for after applying grayscale */
+    pthread_barrier_init(&grayBarrier, NULL, NUM_THREADS);
+    /* barrier for after applying sobel filter */
+    pthread_barrier_init(&sobelBarrier, NULL, NUM_THREADS + 1);
 }
 
-void to442_grayscale(int id, int numRows) {
-    int start = id * numRows;
-    int end = (id == NUM_THREADS - 1) ? frame_info.gray.rows : start + numRows;
+void init_threads() {
 
-    for (int y = start; y < end; y++) {
-        for (int x = 0; x < frame_info.frame.cols; x++) {
-            cv::Vec3b pixel = frame_info.frame.at<cv::Vec3b>(y, x);
-            uint8_t grayValue = static_cast<uint8_t>(
-                pixel[2] * RED_WEIGHT + pixel[1] * GREEN_WEIGHT + pixel[0] * BLUE_WEIGHT
-            );
-            frame_info.gray.at<uint8_t>(y, x) = grayValue;
+    int numCols = frames.original.cols;
+    int numRows = frames.original.rows;
+    int startRow = 0;
+
+    int sectionHeight = numRows / NUM_THREADS;
+    int remainder = numRows % NUM_THREADS;
+    for (int i = 0; i < NUM_THREADS; i++){
+
+        /* Calculate width and size for each thread */
+        threadcurrThread[i].startRow = startRow;
+        threadcurrThread[i].width = numCols;
+        threadcurrThread[i].height = sectionHeight + (i < remainder ? 1 : 0);
+        startRow += threadcurrThread[i].height;  // Move start row for the next thread
+        threadcurrThread[i].firstThread = 0;
+        threadcurrThread[i].lastThread = 0;
+
+        if (i == 0){
+            threadcurrThread[i].firstThread = 1;
+        }
+        if (i == NUM_THREADS - 1){
+            threadcurrThread[i].lastThread = 1;
+        }
+
+        // threadcurrThread[i].gray = &frame_currThread.gray;
+        // threadcurrThread[i].sobel = &frame_currThread.sobel;
+        // threadcurrThread[i].original = &frame_currThread.original;
+
+        if (pthread_create(&threads[i], NULL, thread, &threadcurrThread[i]) != 0){
+            perror("Could not create pthread");
+            exit(EXIT_FAILURE);
         }
     }
+
 }
 
-// void to442_grayscale(int id, int numRows) {
-//     int x, y;
-//     int start = id * numRows;
-//     int end = (id == NUM_THREADS - 1) ? frame_info.gray.rows : start + numRows;
+int main(int argc, char** argv) {
 
-//     uint8_t* row;
-
-//     uint8x8_t blue;
-//     uint8x8_t green;
-//     uint8x8_t red;
-//     // cv::Vec3b* rowColor;
-//     uint8x8x3_t pixels;
-
-//     for (y = start; y < end; y++) {
-//         // cv::Vec3b* rowColor = colorImage.ptr<cv::Vec3b>(y);
-
-//         rows = frame_info.frame.ptr<uint8_t>(y);
-
-//         for (x = 0; x < frame_info.frame.cols-8; x+=8) {
-//             pixels = vld3_u8(&row[x * 8]);
-
-//             blue = pixels.val[0];  
-//             green = pixels.val[1]; 
-//             red = pixels.val[2];   
-
-//             /* TODO */
-
-//             cv::Vec3b pixel = frame_info.frame.at<cv::Vec3b>(y, x);
-//             uint8_t grayValue = static_cast<uint8_t>(
-//                 pixel[2] * RED_WEIGHT + pixel[1] * GREEN_WEIGHT + pixel[0] * BLUE_WEIGHT
-//             );
-//             frame_info.gray.at<uint8_t>(y, x) = grayValue;
-//         }
-//     }
-// }
-
-void to442_sobel(int id, int numRows) {
-    uint8_t* rows[3];
-    uint8x8_t pixelVect_u8[3][3];
-    int16x8_t pixelVect_s16[3][3];
-
-    uint8_t* sobel;
-
-    int16x8_t sumX, sumY, mag;
-    uint8x8_t mag_u8;
-
-    int start;
-    int end;
-
-    start = id * numRows;
-    if(id == 0) start++;
-
-    end = (id == NUM_THREADS - 1) ? frame_info.gray.rows - 1: start + numRows;
-
-    for (int y = start; y < end; y++) {
-
-        rows[0] = frame_info.gray.ptr<uint8_t>(y - 1);
-        rows[1] = frame_info.gray.ptr<uint8_t>(y);
-        rows[2] = frame_info.gray.ptr<uint8_t>(y + 1);
-        sobel = frame_info.sobel.ptr<uint8_t>(y);
-
-        for (int x = 1; x < frame_info.gray.cols - 8 - 1; x+=8) {
-            load_and_convert(rows, pixelVect_u8, pixelVect_s16, x);    
-            apply_filter(&sumX, &sumY, pixelVect_s16);                                                                 
-
-            /* Calculate magnitude */
-            sumX = vabsq_s16(sumX);
-            sumY = vabsq_s16(sumY);
-            mag = vaddq_s16(sumX, sumY);
-            mag_u8 = clip_and_convert(mag);
-
-            vst1_u8(&sobel[x], mag_u8);
-        }
+    
+    /* Checking Command Line Arguments */
+    if (argc != 2) {
+        perror("No image path found");
+        return EXIT_FAILURE;
     }
+
+    // Open the video file
+    cv::VideoCapture cap(argv[1]);
+    if (!cap.isOpened()) {
+        std::cerr << "Error: Could not open video.\n";
+        return -1;
+    }
+
+
+    /* setup barriers */
+    init_barriers();
+
+    /* Create Mat objects (N dimensional dense array class)*/
+    /* read first original and determine dimensions */
+
+    cap.read(frames.original);
+    frames.gray = cv::Mat(numRows, numCols, CV_8UC1);
+    frames.sobel = cv::Mat(numRows-2, numCols-2, CV_8UC1);
+    init_threads();
+
+    // /* make sobel original all white to check for missing lines when debugging */
+    // for (int i = 0; i < numRows - 2; i ++){
+    //     for (int j = 0; j < numCols -2 ; j++){
+    //         sobel.at<uint8_t>(i, j) = 255;
+    //     }
+    // }
+
+    cv::namedWindow("Sobel", cv::WINDOW_NORMAL);
+    cv::resizeWindow("Sobel", 854, 480);
+
+    int frame_num = 1;
+    while (cap.read(original)){
+        pthread_barrier_wait(&loadBarrier);
+        pthread_barrier_wait(&sobelBarrier);
+        
+        cv::imshow("Sobel", sobel);
+        if (cv::waitKey(1) >= 0) {
+            break;
+        }
+        frame_num++;
+    }
+    exit_flag = 1;
+    pthread_barrier_wait(&loadBarrier);
+    
+    return 0;
+
+
 }
 
-void apply_filter(int16x8_t* sumX, int16x8_t* sumY, int16x8_t pixelVect_s16[3][3]) {
-    int row, col;
+void clean_threads() {
+    /* Wait for each thread to end */
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        pthread_join(threads[i], NULL);
+    }
+    cap.release();
+    return EXIT_SUCCESS;
+}
+
+
+
+void to442_grayscale(int startRow, int height){
+    int numCols = frames.original.cols;
+    int num_pixels = numCols * height;
+    uint8_t* pixel_pointer = &(frames.original.data)[startRow * numCols * 3];
+
+    const uint8x16_t r_weight = vdupq_n_u8(54);  // 0.2126 * 256 ≈ 54
+    const uint8x16_t g_weight = vdupq_n_u8(183); // 0.7152 * 256 ≈ 183
+    const uint8x16_t b_weight = vdupq_n_u8(18);  // 0.0722 * 256 ≈ 18
+
+    for (int i = 0; i < num_pixels; i += 16){ 
+        /* 3 color channels, each with 16 eight-bit values */
+        uint8x16x3_t rgbVector = vld3q_u8(&pixel_pointer[i*3]);
+
+        // Multiply each channel by its respective weight
+        uint16x8_t redHigh = vmull_u8(vget_high_u8(rgbVector.val[0]), vget_high_u8(r_weight));
+        uint16x8_t redLow = vmull_u8(vget_low_u8(rgbVector.val[0]), vget_low_u8(r_weight));
+
+        uint16x8_t greenHigh = vmull_u8(vget_high_u8(rgbVector.val[1]), vget_high_u8(g_weight));
+        uint16x8_t greenLow = vmull_u8(vget_low_u8(rgbVector.val[1]), vget_low_u8(g_weight));
+
+        uint16x8_t blueHigh = vmull_u8(vget_high_u8(rgbVector.val[2]), vget_high_u8(b_weight));
+        uint16x8_t blueLow = vmull_u8(vget_low_u8(rgbVector.val[2]), vget_low_u8(b_weight));
+
+        // Sum up the weighted values
+        uint16x8_t grayHigh = vaddq_u16(vaddq_u16(redHigh, greenHigh), blueHigh);
+        uint16x8_t grayLow = vaddq_u16(vaddq_u16(redLow, greenLow), blueLow);
+
+        // Scale down by 256 (right shift by 8) and narrow to 8-bit
+        uint8x8_t gray_high_narrow = vshrn_n_u16(grayHigh, 8);
+        uint8x8_t gray_low_narrow = vshrn_n_u16(grayLow, 8);
+
+        // Combine the high and low parts
+        uint8x16_t grayVector = vcombine_u8(gray_low_narrow, gray_high_narrow);
+
+        // Store the result
+        vst1q_u8(&frames.gray.data[(startRow * numCols) + i], grayVector);
+
+    }
+
+}
+
+
+void to442_sobel(int startRow, int height){
+    int sumX, sumY, mag;
+
     int Gx[3][3] = {
         {-1, 0, 1},
         {-2, 0, 2},
@@ -150,100 +217,118 @@ void apply_filter(int16x8_t* sumX, int16x8_t* sumY, int16x8_t pixelVect_s16[3][3
         { 1,  2,  1}
     };
 
-    for(row = 0; row < 3; row++) {
-        for(col = 0; col < 3; col++) {
-            *sumX = vmlaq_n_s16(*sumX, pixelVect_s16[row][col], Gx[row][col]);
-            *sumX = vmlaq_n_s16(*sumY, pixelVect_s16[row][col], Gy[row][col]);
-        }
-    }
 
-}
+    for (int y = startRow; y < startRow + height; y++) {
+        for (int x = 1; x < frames.gray.cols - 1; x++) {
+            /* convolve on the x */
+            sumX =  (frame_info.gray.at<uint8_t>(y-1, x-1) * Gx[0][0]) + (frame_info.gray.at<uint8_t>(y-1, x+1) * Gx[0][2]) +
+                    (frame_info.gray.at<uint8_t>(y, x-1)   * Gx[1][0]) + (frame_info.gray.at<uint8_t>(y, x+1)   * Gx[1][2]) +
+                    (frame_info.gray.at<uint8_t>(y+1, x-1) * Gx[2][0]) + (frame_info.gray.at<uint8_t>(y+1, x+1) * Gx[2][2]);
+            
+            /* convolve on the y */
+            sumY =  (frame_info.gray.at<uint8_t>(y-1, x-1) * Gy[0][0]) + (frame_info.gray.at<uint8_t>(y-1, x)   * Gy[0][1]) +
+                    (frame_info.gray.at<uint8_t>(y-1, x+1) * Gy[0][2]) + (frame_info.gray.at<uint8_t>(y+1, x-1) * Gy[2][0]) +
+                    (frame_info.gray.at<uint8_t>(y+1, x)   * Gy[2][1]) + (frame_info.gray.at<uint8_t>(y+1, x+1) * Gy[2][2]);
 
-/* check if passing pixelVect_s16 works as reference */
-void load_and_convert(uint8_t* rows[3], uint8x8_t pixelVect_u8[3][3], int16x8_t pixelVect_s16[3][3], int x) {
-    int row, col;
-    for (row = 0; row < 3; row++) {
-        pixelVect_u8[row][0] = vld1_u8(&rows[row][x - 1]); /* Load left pixel */
-        pixelVect_u8[row][1] = vld1_u8(&rows[row][x]);     /* Load center pixel */
-        pixelVect_u8[row][2] = vld1_u8(&rows[row][x + 1]); /* Load right pixel */
-    }
+            mag = std::abs(sumX) + std::abs(sumY);
 
-    /* Convert to 16-bit vectors */
-    for (row = 0; row < 3; row++) {
-        for (col = 0; col < 3; col++) {
-            pixelVect_s16[row][col] = vreinterpretq_s16_u16(vmovl_u8(pixelVect_u8[row][col])); /* Expand to 16-bit */
-        }
-    }
-}
-
-uint8x8_t clip_and_convert(int16x8_t mag) {
-    int16x8_t clampZero, clamp255;
-    uint8x8_t result;
-
-    /* clamp negative values to 0 */
-    clampZero = vmaxq_s16(mag, vdupq_n_s16(0));
-    /* clamp values > 255 to 255 */
-    clamp255 = vminq_s16(clampZero, vdupq_n_s16(255));
-    /* convert to uint8x8_t */
-    result = vqmovn_u16(vreinterpretq_u16_s16(clamp255));
-    
-
-    return result;
-}
-
-int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <video_file>" << std::endl;
-        return -1;
-    }
-
-    /* capture the video */
-    cv::VideoCapture cap(argv[1]);
-    if (!cap.isOpened()) {
-        std::cerr << "Error opening video file." << std::endl;
-        return -1;
-    }
-
-    int width = cap.get(cv::CAP_PROP_FRAME_WIDTH);
-    int height = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
-
-    frame_info.gray.create(height, width, CV_8UC1);
-    frame_info.sobel.create(height-1, width-1, CV_8UC1);
-
-    pthread_barrier_init(&barrier, NULL, NUM_THREADS);
-
-    while(true) {
-        // printf("here\n");
-        /* capture the frame */
-        cap >> frame_info.frame;
-        /* frame is empty */
-        if(frame_info.frame.empty()) {
-            break;
-        }
-        // create_threads();
-        for (int i = 0; i < NUM_THREADS; i++) {
-            id[i] = i;
-            if (pthread_create(&threads[i], NULL, thread_function, (void*)(&id[i])) != 0) {
-                perror("pthread_create\n");
-                exit(EXIT_FAILURE);
+            if(mag > 255) {
+                mag = 255;
             }
+            frame_info.sobel.at<uint8_t>(y, x) = (uint8_t)mag;
         }
-        for (int i = 0; i < NUM_THREADS; i++) {
-            pthread_join(threads[i], NULL);
-        }
-        /* show the frame */
-        cv::imshow("Sobel", frame_info.sobel);
-
-        /* wait for 'q' to quit */
-        if (cv::waitKey(30) == 'q') break;
-        
-
     }
-    pthread_barrier_destroy(&barrier);
-    cap.release();
-    cv::destroyAllWindows();
-    return 0;
+    // int numCols = gray->cols;
+
+    // int16x4_t Gx_top = {-1,0,1,0};
+    // int16x4_t Gx_mid = {-2,0,2,0};
+    // int16x4_t Gx_bot = {-1,0,1,0};
+
+    // int16x4_t Gy_top = {1,2,1,0};
+    // int16x4_t Gy_mid = {0,0,0,0};
+    // int16x4_t Gy_bot = {-1,-2,-1,0};
+
+    // for (int y = startRow + 1; y < startRow + height - 1; y++) {
+    //     for (int x = 1; x < numCols - 1; x += 1) { // Process 8 pixels at a time
+
+
+    //         int16x4_t top_row = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(vld1_u8(&gray->data[(y - 1) * numCols + (x-1)]))));
+    //         int16x4_t mid_row = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(vld1_u8(&gray->data[y * numCols + (x-1)]))));
+    //         int16x4_t bot_row = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(vld1_u8(&gray->data[(y + 1) * numCols + (x-1)]))));
+
+    //         int32x4_t Gx_accum = vdupq_n_s32(0);
+    //         int32x4_t Gy_accum = vdupq_n_s32(0);
+
+    //         Gx_accum = vmlal_s16(Gx_accum, top_row, Gx_top);
+    //         Gx_accum = vmlal_s16(Gx_accum, mid_row, Gx_mid);
+    //         Gx_accum = vmlal_s16(Gx_accum, bot_row, Gx_bot);
+
+    //         Gy_accum = vmlal_s16(Gy_accum, top_row, Gy_top);
+        
+    //         Gy_accum = vmlal_s16(Gy_accum, bot_row, Gy_bot);
+
+            
+    //         int16_t Gx = vaddvq_s32(Gx_accum);
+
+            
+    //         int16_t Gy = vaddvq_s32(Gx_accum);
+
+    //         int16_t G = abs(Gx) + abs(Gy);
+
+    //         uint8_t result;
+    //         if (G > 255){
+    //             result = 255;
+    //         }
+    //         else result = (uint8_t)G;
+
+    //         uint8_t* row_ptr = sobel->ptr<uint8_t>(y - 1);
+    //         row_ptr[x - 1] = result;
+            
+    //     }
+    // }
+    
 }
 
+void* thread(void* arg){
+
+    int sobelStart;
+    int sobelHeight;
+    threadStruct_t currThread = *(threadStruct_t*)arg;
+
+    while(1){
+        pthread_barrier_wait(&loadBarrier);
+        if (exit_flag == 1){
+            pthread_exit(NULL);
+        }
+
+        /* apply grayscale */
+        // to442_grayscale(currThread.original, currThread.gray, currThread.startRow, currThread.height);
+        to442_grayscale(currThread.startRow, currThread.height);
+        /* wait for all other threads to finish grayscale */
+        pthread_barrier_wait(&grayBarrier);
+
+        /* modified dimensions for applying sobel */
+        int sobelStart = currThread.startRow - 1;
+        int sobelHeight = currThread.height + 2;
+
+        if (currThread.firstThread && currThread.lastThread) {
+            sobelStart = currThread.startRow;
+            sobelHeight = currThread.height;
+        }
+        else if (currThread.firstThread) {
+            sobelStart += 1;
+        }
+        else if (currThread.lastThread) {
+            sobelHeight -= 1;
+        }
+
+        // to442_sobel(currThread.gray, currThread.sobel, sobelStart, sobelHeight);
+        to442_sobel(sobelStart, sobelHeight);
+
+        pthread_barrier_wait(&sobelBarrier);
+    }
 
 
+
+    return NULL;
+}
