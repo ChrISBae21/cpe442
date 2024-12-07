@@ -14,6 +14,7 @@ int exit_flag = 0;
 cv::Mat* to442_sobel(cv::Mat* gray, cv::Mat* sobel, int startRow, int height);
 cv::Mat* to442_grayscale(cv::Mat* original, cv::Mat* gray, int startRow, int height);
 void* thread(void*);
+void clean_threads(cv::VideoCapture cap);
 
 typedef struct threadStruct{
     // cv::Mat* original;
@@ -63,6 +64,9 @@ void init_threads() {
 
     int sectionHeight = numRows / NUM_THREADS;
     int remainder = numRows % NUM_THREADS;
+    
+    frames.gray = cv::Mat(numRows, numCols, CV_8UC1);
+    frames.sobel = cv::Mat(numRows-2, numCols-2, CV_8UC1);
     for (int i = 0; i < NUM_THREADS; i++){
 
         /* Calculate width and size for each thread */
@@ -116,8 +120,6 @@ int main(int argc, char** argv) {
     /* read first original and determine dimensions */
 
     cap.read(frames.original);
-    frames.gray = cv::Mat(numRows, numCols, CV_8UC1);
-    frames.sobel = cv::Mat(numRows-2, numCols-2, CV_8UC1);
     init_threads();
 
     // /* make sobel original all white to check for missing lines when debugging */
@@ -131,11 +133,11 @@ int main(int argc, char** argv) {
     cv::resizeWindow("Sobel", 854, 480);
 
     int frame_num = 1;
-    while (cap.read(original)){
+    while (cap.read(frames.original)){
         pthread_barrier_wait(&loadBarrier);
-        pthread_barrier_wait(&sobelBarrier);
+        //pthread_barrier_wait(&sobelBarrier);
         
-        cv::imshow("Sobel", sobel);
+        cv::imshow("Sobel", frames.gray);
         if (cv::waitKey(1) >= 0) {
             break;
         }
@@ -143,20 +145,20 @@ int main(int argc, char** argv) {
     }
     exit_flag = 1;
     pthread_barrier_wait(&loadBarrier);
+    clean_threads(cap);
     
     return 0;
 
 
 }
 
-void clean_threads() {
+void clean_threads(cv::VideoCapture cap) {
     /* Wait for each thread to end */
     for (int i = 0; i < NUM_THREADS; i++)
     {
         pthread_join(threads[i], NULL);
     }
     cap.release();
-    return EXIT_SUCCESS;
 }
 
 
@@ -221,71 +223,23 @@ void to442_sobel(int startRow, int height){
     for (int y = startRow; y < startRow + height; y++) {
         for (int x = 1; x < frames.gray.cols - 1; x++) {
             /* convolve on the x */
-            sumX =  (frame_info.gray.at<uint8_t>(y-1, x-1) * Gx[0][0]) + (frame_info.gray.at<uint8_t>(y-1, x+1) * Gx[0][2]) +
-                    (frame_info.gray.at<uint8_t>(y, x-1)   * Gx[1][0]) + (frame_info.gray.at<uint8_t>(y, x+1)   * Gx[1][2]) +
-                    (frame_info.gray.at<uint8_t>(y+1, x-1) * Gx[2][0]) + (frame_info.gray.at<uint8_t>(y+1, x+1) * Gx[2][2]);
+            sumX =  (frames.gray.at<uint8_t>(y-1, x-1) * Gx[0][0]) + (frames.gray.at<uint8_t>(y-1, x+1) * Gx[0][2]) +
+                    (frames.gray.at<uint8_t>(y, x-1)   * Gx[1][0]) + (frames.gray.at<uint8_t>(y, x+1)   * Gx[1][2]) +
+                    (frames.gray.at<uint8_t>(y+1, x-1) * Gx[2][0]) + (frames.gray.at<uint8_t>(y+1, x+1) * Gx[2][2]);
             
             /* convolve on the y */
-            sumY =  (frame_info.gray.at<uint8_t>(y-1, x-1) * Gy[0][0]) + (frame_info.gray.at<uint8_t>(y-1, x)   * Gy[0][1]) +
-                    (frame_info.gray.at<uint8_t>(y-1, x+1) * Gy[0][2]) + (frame_info.gray.at<uint8_t>(y+1, x-1) * Gy[2][0]) +
-                    (frame_info.gray.at<uint8_t>(y+1, x)   * Gy[2][1]) + (frame_info.gray.at<uint8_t>(y+1, x+1) * Gy[2][2]);
+            sumY =  (frames.gray.at<uint8_t>(y-1, x-1) * Gy[0][0]) + (frames.gray.at<uint8_t>(y-1, x)   * Gy[0][1]) +
+                    (frames.gray.at<uint8_t>(y-1, x+1) * Gy[0][2]) + (frames.gray.at<uint8_t>(y+1, x-1) * Gy[2][0]) +
+                    (frames.gray.at<uint8_t>(y+1, x)   * Gy[2][1]) + (frames.gray.at<uint8_t>(y+1, x+1) * Gy[2][2]);
 
             mag = std::abs(sumX) + std::abs(sumY);
 
             if(mag > 255) {
                 mag = 255;
             }
-            frame_info.sobel.at<uint8_t>(y, x) = (uint8_t)mag;
+            frames.sobel.at<uint8_t>(y, x) = (uint8_t)mag;
         }
     }
-    // int numCols = gray->cols;
-
-    // int16x4_t Gx_top = {-1,0,1,0};
-    // int16x4_t Gx_mid = {-2,0,2,0};
-    // int16x4_t Gx_bot = {-1,0,1,0};
-
-    // int16x4_t Gy_top = {1,2,1,0};
-    // int16x4_t Gy_mid = {0,0,0,0};
-    // int16x4_t Gy_bot = {-1,-2,-1,0};
-
-    // for (int y = startRow + 1; y < startRow + height - 1; y++) {
-    //     for (int x = 1; x < numCols - 1; x += 1) { // Process 8 pixels at a time
-
-
-    //         int16x4_t top_row = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(vld1_u8(&gray->data[(y - 1) * numCols + (x-1)]))));
-    //         int16x4_t mid_row = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(vld1_u8(&gray->data[y * numCols + (x-1)]))));
-    //         int16x4_t bot_row = vreinterpret_s16_u16(vget_low_u16(vmovl_u8(vld1_u8(&gray->data[(y + 1) * numCols + (x-1)]))));
-
-    //         int32x4_t Gx_accum = vdupq_n_s32(0);
-    //         int32x4_t Gy_accum = vdupq_n_s32(0);
-
-    //         Gx_accum = vmlal_s16(Gx_accum, top_row, Gx_top);
-    //         Gx_accum = vmlal_s16(Gx_accum, mid_row, Gx_mid);
-    //         Gx_accum = vmlal_s16(Gx_accum, bot_row, Gx_bot);
-
-    //         Gy_accum = vmlal_s16(Gy_accum, top_row, Gy_top);
-        
-    //         Gy_accum = vmlal_s16(Gy_accum, bot_row, Gy_bot);
-
-            
-    //         int16_t Gx = vaddvq_s32(Gx_accum);
-
-            
-    //         int16_t Gy = vaddvq_s32(Gx_accum);
-
-    //         int16_t G = abs(Gx) + abs(Gy);
-
-    //         uint8_t result;
-    //         if (G > 255){
-    //             result = 255;
-    //         }
-    //         else result = (uint8_t)G;
-
-    //         uint8_t* row_ptr = sobel->ptr<uint8_t>(y - 1);
-    //         row_ptr[x - 1] = result;
-            
-    //     }
-    // }
     
 }
 
@@ -308,24 +262,24 @@ void* thread(void* arg){
         pthread_barrier_wait(&grayBarrier);
 
         /* modified dimensions for applying sobel */
-        int sobelStart = currThread.startRow - 1;
-        int sobelHeight = currThread.height + 2;
+        // int sobelStart = currThread.startRow - 1;
+        // int sobelHeight = currThread.height + 2;
 
-        if (currThread.firstThread && currThread.lastThread) {
-            sobelStart = currThread.startRow;
-            sobelHeight = currThread.height;
-        }
-        else if (currThread.firstThread) {
-            sobelStart += 1;
-        }
-        else if (currThread.lastThread) {
-            sobelHeight -= 1;
-        }
+        // if (currThread.firstThread && currThread.lastThread) {
+        //     sobelStart = currThread.startRow;
+        //     sobelHeight = currThread.height;
+        // }
+        // else if (currThread.firstThread) {
+        //     sobelStart += 1;
+        // }
+        // else if (currThread.lastThread) {
+        //     sobelHeight -= 1;
+        // }
 
         // to442_sobel(currThread.gray, currThread.sobel, sobelStart, sobelHeight);
-        to442_sobel(sobelStart, sobelHeight);
+        //to442_sobel(sobelStart, sobelHeight);
 
-        pthread_barrier_wait(&sobelBarrier);
+        //pthread_barrier_wait(&sobelBarrier);
     }
 
 
